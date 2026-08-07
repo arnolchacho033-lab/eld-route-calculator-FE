@@ -16,7 +16,7 @@ describe('LogSheet', () => {
     const { container } = render(<LogSheet log={mkLog(1)} />)
     const path = container.querySelector('.log-svg path')
     expect(path).toBeTruthy()
-    expect(path!.getAttribute('d')).toContain('M44.00')
+    expect(path!.getAttribute('d')).toContain('M76.00')
   })
 
   it('renders one remark row per event', () => {

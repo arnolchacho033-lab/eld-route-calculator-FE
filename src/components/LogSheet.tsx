@@ -5,7 +5,7 @@ import { STATUS_ORDER, fmtHhMm } from '../lib/logs'
 
 const ROWS: DutyStatus[] = ['OFF_DUTY', 'SLEEPER', 'DRIVING', 'ON_DUTY']
 
-const X0 = 44
+const X0 = 76
 const W = 930
 const TOP = 8
 const ROWH = 56
