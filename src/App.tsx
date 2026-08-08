@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import './App.css'
 import TripForm from './components/TripForm'
 import Results from './components/Results'
@@ -12,15 +12,18 @@ function App() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  useEffect(() => {
+    if (trip) {
+      document.getElementById('results')?.scrollIntoView({ behavior: 'smooth' })
+    }
+  }, [trip])
+
   const handlePlan = async (input: TripInput) => {
     setBusy(true)
     setError(null)
     try {
       const t = await planTrip(input)
       setTrip(t)
-      setTimeout(() => {
-        document.getElementById('results')?.scrollIntoView({ behavior: 'smooth' })
-      }, 60)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Something went wrong while planning the trip.')
     } finally {

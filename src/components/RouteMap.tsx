@@ -5,53 +5,60 @@ import 'leaflet/dist/leaflet.css'
 import { simplifyPath } from '../lib/geo'
 import { pin } from './mapPins'
 import StopMarker from './StopMarker'
-import type { Trip } from '../types'
+import type { LatLng, Trip } from '../types'
 
-// Leaflet route map with the simplified polyline and origin/pickup/dropoff pins.
-// Can expand to a fullscreen fixed overlay: enables scroll-wheel zoom on expand
-// (the wheel is otherwise disabled so the page keeps scrolling) and closes on Esc.
+const EXPAND_DELAY_MS = 80
+
+// Leaflet route map: simplified polyline, origin/pickup/dropoff pins and stop
+// markers. Expanding to fullscreen enables scroll-wheel zoom and Esc-to-close
+// (the wheel is disabled while inline so the page keeps scrolling).
 export default function RouteMap({ trip }: { trip: Trip }) {
   const [expanded, setExpanded] = useState(false)
   const mapRef = useRef<L.Map | null>(null)
 
-  // Ramer–Douglas–Peucker at 30 m keeps the route shape while cutting
-  // tens of thousands of OSRM geometry points down to a renderable set.
+  // Ramer–Douglas–Peucker at 30 m keeps the route shape while cutting the tens
+  // of thousands of OSRM geometry points down to a renderable set.
   const polyline = useMemo(
     () => simplifyPath(trip.geometry, 30).map((p) => [p.lat, p.lng] as [number, number]),
     [trip.geometry],
   )
+
+  // Fit the whole trip on screen: route line, stops and the three waypoints.
   const bounds = useMemo(() => {
-    const all: Array<[number, number]> = [
+    const points: Array<[number, number]> = [
       ...polyline,
-      [trip.origin.coord.lat, trip.origin.coord.lng],
-      [trip.pickup.coord.lat, trip.pickup.coord.lng],
-      [trip.dropoff.coord.lat, trip.dropoff.coord.lng],
       ...trip.stops.map((s) => [s.coord.lat, s.coord.lng] as [number, number]),
+      ...[trip.origin, trip.pickup, trip.dropoff].map(
+        (p) => [p.coord.lat, p.coord.lng] as [number, number],
+      ),
     ]
-    return L.latLngBounds(all)
-  }, [polyline, trip.origin.coord, trip.pickup.coord, trip.dropoff.coord, trip.stops])
+    return L.latLngBounds(points)
+  }, [polyline, trip.origin, trip.pickup, trip.dropoff, trip.stops])
 
   useEffect(() => {
-    if (expanded) {
-      const id = window.setTimeout(() => {
-        mapRef.current?.invalidateSize()
-        mapRef.current?.scrollWheelZoom.enable()
-      }, 80)
-      return () => window.clearTimeout(id)
+    if (!expanded) {
+      mapRef.current?.scrollWheelZoom.disable()
+      return
     }
-    mapRef.current?.scrollWheelZoom.disable()
-  }, [expanded])
-
-  useEffect(() => {
-    if (!expanded) return
+    const id = window.setTimeout(() => {
+      mapRef.current?.invalidateSize()
+      mapRef.current?.scrollWheelZoom.enable()
+    }, EXPAND_DELAY_MS)
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setExpanded(false)
     }
     window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
+    return () => {
+      window.clearTimeout(id)
+      window.removeEventListener('keydown', onKey)
+    }
   }, [expanded])
 
-  const toggle = () => setExpanded((e) => !e)
+  const waypoints: Array<{ kind: 'origin' | 'pickup' | 'dropoff'; coord: LatLng; label: string }> = [
+    { kind: 'origin', coord: trip.origin.coord, label: `Origin · ${trip.origin.label}` },
+    { kind: 'pickup', coord: trip.pickup.coord, label: `Pickup · ${trip.pickup.label}` },
+    { kind: 'dropoff', coord: trip.dropoff.coord, label: `Drop-off · ${trip.dropoff.label}` },
+  ]
 
   return (
     <div className={expanded ? 'map-shell map-shell--expanded' : 'map-shell'}>
@@ -66,19 +73,12 @@ export default function RouteMap({ trip }: { trip: Trip }) {
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
           url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
         />
-        <Polyline
-          positions={polyline}
-          pathOptions={{ color: '#f07d00', weight: 5, opacity: 0.9 }}
-        />
-        <Marker position={[trip.origin.coord.lat, trip.origin.coord.lng]} icon={pin('origin')}>
-          <Tooltip direction="top" offset={[0, -8]}>Origin · {trip.origin.label}</Tooltip>
-        </Marker>
-        <Marker position={[trip.pickup.coord.lat, trip.pickup.coord.lng]} icon={pin('pickup')}>
-          <Tooltip direction="top" offset={[0, -8]}>Pickup · {trip.pickup.label}</Tooltip>
-        </Marker>
-        <Marker position={[trip.dropoff.coord.lat, trip.dropoff.coord.lng]} icon={pin('dropoff')}>
-          <Tooltip direction="top" offset={[0, -8]}>Drop-off · {trip.dropoff.label}</Tooltip>
-        </Marker>
+        <Polyline positions={polyline} pathOptions={{ color: '#f07d00', weight: 5, opacity: 0.9 }} />
+        {waypoints.map((w) => (
+          <Marker key={w.kind} position={[w.coord.lat, w.coord.lng]} icon={pin(w.kind)}>
+            <Tooltip direction="top" offset={[0, -8]}>{w.label}</Tooltip>
+          </Marker>
+        ))}
         {trip.stops.map((s, i) => (
           <StopMarker key={`${s.kind}-${i}`} stop={s} />
         ))}
@@ -88,7 +88,7 @@ export default function RouteMap({ trip }: { trip: Trip }) {
         className="map-expand-btn"
         aria-label={expanded ? 'Minimize map' : 'Expand map'}
         title={expanded ? 'Minimize map (Esc)' : 'Expand map'}
-        onClick={toggle}
+        onClick={() => setExpanded((e) => !e)}
       >
         {expanded ? (
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
